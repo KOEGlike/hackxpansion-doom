@@ -54,15 +54,28 @@ pub fn sector_at(map: &Map, x: f32, y: f32) -> Option<usize> {
             if sub.seg_count == 0 {
                 return None;
             }
-            let seg = &map.segs[sub.first_seg as usize];
-            let line = &map.lines[seg.linedef as usize % map.line_count.max(1)];
-            let side_idx = if seg.side == 0 {
-                line.front
-            } else {
-                line.back
-            };
-            let side = &map.sides[side_idx as usize % map.side_count.max(1)];
-            return Some(side.sector as usize % map.sector_count.max(1));
+            // First *valid* seg: index 0 can be a culled mini-seg.
+            let nl = map.line_count.max(1);
+            let ns = map.side_count.max(1);
+            let nsec = map.sector_count.max(1);
+            for k in 0..sub.seg_count as usize {
+                let seg = &map.segs[sub.first_seg as usize + k];
+                if seg.linedef == u16::MAX || (seg.linedef as usize) >= nl {
+                    continue;
+                }
+                let line = &map.lines[seg.linedef as usize % nl];
+                let side_idx = if seg.side == 0 {
+                    line.front
+                } else {
+                    line.back
+                };
+                if side_idx == u16::MAX {
+                    continue;
+                }
+                let side = &map.sides[side_idx as usize % ns];
+                return Some(side.sector as usize % nsec);
+            }
+            return None;
         }
         child = next;
         if child >= map.node_count {

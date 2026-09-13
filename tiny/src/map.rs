@@ -103,12 +103,12 @@ pub struct Subsector {
 
 /// A seg: directed edge with linedef/side references.
 ///
-/// NOTE: the SEGS lump's `linedef`/`side` fields cannot be trusted (this
-/// WAD's node builder left zeros and heap garbage there while v1/v2 are
-/// exact). They are re-derived geometrically at load (see
-/// [`Map::resolve_segs`]): the containing linedef via the blockmap and
-/// the facing side via the subsector centroid. `linedef` stays
-/// `u16::MAX` when unresolvable (skipped at render).
+/// The SEGS lump's `linedef`/`side` fields are authoritative (verified
+/// against the source WAD: every entry is in range and its direction
+/// matches its line). [`Map::resolve_segs`] only culls degenerate segs
+/// and off-line mini-segs (partition edges that close subsectors but lie
+/// on no linedef); those keep `linedef = u16::MAX` and are skipped at
+/// render.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Seg {
     pub v1: u16,
@@ -424,11 +424,12 @@ impl Map {
                 map.segs,
                 map.seg_count,
                 MAX_SEGS,
+                // seg_t: v1, v2, angle, linedef, side, offset (int16 each).
                 Seg {
                     v1: le_u16(&c[0..2]),
                     v2: le_u16(&c[2..4]),
-                    linedef: le_u16(&c[8..10]),
-                    side: c[10],
+                    linedef: le_u16(&c[6..8]),
+                    side: c[8],
                 }
             );
         }
@@ -525,141 +526,66 @@ impl Map {
         Some(())
     }
 
-    /// Re-derives every seg's linedef + facing side geometrically (see the
-    /// [`Seg`] note). Unresolvable segs keep `linedef = u16::MAX`.
+    /// Validates every seg's stored linedef + side (see the [`Seg`]
+    /// note). Degenerate segs and off-line mini-segs keep
+    /// `linedef = u16::MAX` (skipped at render).
     fn resolve_segs(&mut self) {
-        // Subsector index per seg (for centroids).
+        let nv = self.vertex_count.max(1);
         for si in 0..self.seg_count {
             let seg = self.segs[si];
-            let a = self.vertexes[seg.v1 as usize % self.vertex_count.max(1)];
-            let b = self.vertexes[seg.v2 as usize % self.vertex_count.max(1)];
+            if (seg.v1 as usize) >= self.vertex_count
+                || (seg.v2 as usize) >= self.vertex_count
+                || (seg.linedef as usize) >= self.line_count
+                || seg.side > 1
+            {
+                self.segs[si].linedef = u16::MAX;
+                continue;
+            }
+            let a = self.vertexes[seg.v1 as usize % nv];
+            let b = self.vertexes[seg.v2 as usize % nv];
             let dx = b.x - a.x;
             let dy = b.y - a.y;
             if dx * dx + dy * dy < 0.01 {
                 self.segs[si].linedef = u16::MAX;
                 continue;
             }
-            // Owning subsector + centroid.
-            let mut sub_idx = None;
-            for (ui, sub) in self.subsectors[..self.subsector_count].iter().enumerate() {
-                let f = sub.first_seg as usize;
-                if si >= f && si < f + sub.seg_count as usize {
-                    sub_idx = Some(ui);
-                    break;
-                }
-            }
-            let sub_idx = match sub_idx {
-                Some(u) => u,
-                None => {
-                    self.segs[si].linedef = u16::MAX;
-                    continue;
-                }
-            };
-            let sub = self.subsectors[sub_idx];
-            let mut cx = 0.0f32;
-            let mut cy = 0.0f32;
-            let mut cn = 0usize;
-            for k in 0..sub.seg_count as usize {
-                let s = self.segs[sub.first_seg as usize + k];
-                let v = self.vertexes[s.v1 as usize % self.vertex_count.max(1)];
-                cx += v.x;
-                cy += v.y;
-                cn += 1;
-            }
-            if cn == 0 {
+            // The stored linedef must actually contain the seg (mini-segs
+            // close subsectors along partition lines and lie on no
+            // linedef: skip them so they never draw as fake walls).
+            let line = self.lines[seg.linedef as usize];
+            if (line.v1 as usize) >= self.vertex_count
+                || (line.v2 as usize) >= self.vertex_count
+            {
                 self.segs[si].linedef = u16::MAX;
                 continue;
             }
-            cx /= cn as f32;
-            cy /= cn as f32;
-            // Candidate lines from the blockmap cell of the seg midpoint.
-            let mx = (a.x + b.x) * 0.5;
-            let my = (a.y + b.y) * 0.5;
-            match self.find_line(mx, my, a, b) {
-                Some(li) => {
-                    // The owning side is whichever side of the line holds
-                    // the subsector centroid (front = right of v1->v2).
-                    let line = self.lines[li];
-                    let lv1 = self.vertexes[line.v1 as usize % self.vertex_count.max(1)];
-                    let lv2 = self.vertexes[line.v2 as usize % self.vertex_count.max(1)];
-                    let ldx = lv2.x - lv1.x;
-                    let ldy = lv2.y - lv1.y;
-                    let front = (cx - lv1.x) * ldy - (cy - lv1.y) * ldx > 0.0;
-                    self.segs[si].linedef = li as u16;
-                    self.segs[si].side = if front { 0 } else { 1 };
+            let lv1 = self.vertexes[line.v1 as usize % nv];
+            let lv2 = self.vertexes[line.v2 as usize % nv];
+            let ldx = lv2.x - lv1.x;
+            let ldy = lv2.y - lv1.y;
+            let len2 = ldx * ldx + ldy * ldy;
+            if len2 < 0.01 {
+                self.segs[si].linedef = u16::MAX;
+                continue;
+            }
+            let mut on_line = true;
+            for p in [a, b] {
+                let t = ((p.x - lv1.x) * ldx + (p.y - lv1.y) * ldy) / len2;
+                if t < -0.02 || t > 1.02 {
+                    on_line = false;
+                    break;
                 }
-                None => {
-                    self.segs[si].linedef = u16::MAX;
+                let cross = (p.x - lv1.x) * ldy - (p.y - lv1.y) * ldx;
+                if cross.abs() > 1.5 {
+                    on_line = false;
+                    break;
                 }
             }
+            if !on_line {
+                self.segs[si].linedef = u16::MAX;
+            }
+            // Otherwise the stored linedef/side stand as read.
         }
-    }
-
-    /// Finds the linedef containing seg `a->b` near (`mx`,`my`).
-    fn find_line(&self, mx: f32, my: f32, a: Vertex, b: Vertex) -> Option<usize> {
-        // Blockmap lookup first; fall back to a full scan.
-        let mut candidates: [u16; 32] = [0; 32];
-        let mut n_cand = 0usize;
-        let bm = &self.blockmap;
-        if bm.width > 0 {
-            let bx = ((mx - bm.org_x) / 128.0) as isize;
-            let by = ((my - bm.org_y) / 128.0) as isize;
-            if let Some(list) = bm.lines_in(bx, by) {
-                for &li in list {
-                    if n_cand < candidates.len() {
-                        candidates[n_cand] = li;
-                        n_cand += 1;
-                    }
-                }
-            }
-        }
-        let mut best: Option<usize> = None;
-        // Blockmap candidates, then (only if needed) the full scan.
-        for pass in 0..2 {
-            if pass == 1 && best.is_some() {
-                break;
-            }
-            for k in 0..if pass == 0 { n_cand } else { self.line_count } {
-                let li = if pass == 0 {
-                    candidates[k] as usize
-                } else {
-                    k
-                };
-                if li >= self.line_count {
-                    continue;
-                }
-                let line = self.lines[li];
-                let lv1 = self.vertexes[line.v1 as usize % self.vertex_count.max(1)];
-                let lv2 = self.vertexes[line.v2 as usize % self.vertex_count.max(1)];
-                let ldx = lv2.x - lv1.x;
-                let ldy = lv2.y - lv1.y;
-                let len2 = ldx * ldx + ldy * ldy;
-                if len2 < 0.01 {
-                    continue;
-                }
-                // Both endpoints on the line segment (tolerant to split
-                // rounding) ...
-                let mut ok = true;
-                for p in [a, b] {
-                    let t = ((p.x - lv1.x) * ldx + (p.y - lv1.y) * ldy) / len2;
-                    if t < -0.01 || t > 1.01 {
-                        ok = false;
-                        break;
-                    }
-                    let cross = (p.x - lv1.x) * ldy - (p.y - lv1.y) * ldx;
-                    if cross.abs() > 1.0 {
-                        ok = false;
-                        break;
-                    }
-                }
-                if !ok {
-                    continue;
-                }
-                best = Some(li);
-                break;
-            }
-        }
-        best
     }
 
     pub fn vertexes(&self) -> &[Vertex] {
