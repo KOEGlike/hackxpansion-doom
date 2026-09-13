@@ -1,0 +1,26 @@
+[package]
+features = { test = [], "disable-c" = [] }
+edition = "2024"
+name = "doom-core"
+version = "0.1.0"
+license = "GPL-3.0"
+description = "Software DOOM engine core (vendored doomgeneric C sources) for the hackxpansion console"
+
+[build-dependencies]
+cc = "1"
+wadtool = { path = "../wadtool" }
+
+[target.'cfg(target_os = "none")'.dependencies]
+defmt = "1.1"
+embassy-time = { version = "0.5.1", default-features = false }
+
+[profile.release]
+lto = false
+codegen-units = 1
+
+[profile.test]
+lto = false
+codegen-units = 1
+
+[dependencies]
+doom-sys = { path = "../doom-sys" }

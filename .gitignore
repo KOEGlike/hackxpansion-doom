@@ -1,0 +1,9 @@
+# Rust build artifacts (per-crate target dirs included)
+target/
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

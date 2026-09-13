@@ -1,0 +1,11 @@
+[package]
+edition = "2024"
+name = "doom-app"
+version = "0.1.0"
+license = "GPL-3.0"
+publish = false
+description = "DOOM port app for the hackxpansion console"
+
+[dependencies]
+xpanse-api = "0.2"
+tinydoom = { path = "./tiny" }

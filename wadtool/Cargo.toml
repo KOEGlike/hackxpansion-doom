@@ -1,0 +1,9 @@
+[package]
+name = "wadtool"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0"
+description = "Host build tool: rewrites the DOOM WAD for the hackxpansion console"
+
+[dependencies]
+lz4_flex = { version = "0.11", default-features = false }
