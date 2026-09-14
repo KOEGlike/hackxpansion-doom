@@ -1,10 +1,11 @@
 [package]
-features = { test = [], "disable-c" = [] }
 edition = "2024"
 name = "doom-core"
 version = "0.1.0"
 license = "GPL-3.0"
 description = "Software DOOM engine core (vendored doomgeneric C sources) for the hackxpansion console"
+# Legacy Chocolate-Doom reference port (host tests only); not for crates.io.
+publish = false
 
 [build-dependencies]
 cc = "1"
@@ -16,3 +17,7 @@ embassy-time = { version = "0.5.1", default-features = false }
 
 [dependencies]
 doom-sys = { path = "../doom-sys" }
+
+[features]
+test = []
+disable-c = []

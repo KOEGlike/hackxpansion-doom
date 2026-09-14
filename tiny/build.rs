@@ -1,28 +1,36 @@
 use std::env;
+use std::path::PathBuf;
 
 fn main() {
-    let out_dir = env::var_os("OUT_DIR").map(std::path::PathBuf::from).unwrap();
+    let out_dir = env::var_os("OUT_DIR").map(PathBuf::from).unwrap();
+    let embedded = out_dir.join("doom.wad");
+    println!("cargo:rerun-if-env-changed=DOOM_WAD");
 
     // Same stripped WAD as the Chocolate port (single source of truth in
-    // wadtool). DOOM_WAD overrides the default E1M1 asset. Paths below are
-    // relative to this crate root, which is also the build script CWD.
-    let wad = match env::var_os("DOOM_WAD") {
-        Some(path) => {
-            let path = std::path::PathBuf::from(path);
-            println!("cargo:rerun-if-changed={}", path.display());
-            path
+    // wadtool). Paths below are relative to this crate root, which is also
+    // the build script CWD.
+    if let Some(path) = env::var_os("DOOM_WAD").map(PathBuf::from) {
+        // Explicit override: compress the given source WAD.
+        println!("cargo:rerun-if-changed={}", path.display());
+        wadtool::compress_wad(&path, &embedded);
+    } else {
+        let source = PathBuf::from("../doom-core/assets/doom_e1m1.wad");
+        println!("cargo:rerun-if-changed={}", source.display());
+        if source.exists() {
+            // Workspace checkout: compress from the shared source asset.
+            wadtool::compress_wad(&source, &embedded);
+        } else {
+            // Crates.io checkout (no sibling crates): fall back to the
+            // vendored stripped WAD. Regenerate it via the pipeline above
+            // whenever the source asset or wadtool changes; `vendored_wad`
+            // test guards against drift.
+            let vendored = PathBuf::from("assets/doom.wad");
+            println!("cargo:rerun-if-changed={}", vendored.display());
+            std::fs::copy(&vendored, &embedded).expect("vendored assets/doom.wad missing");
         }
-        None => {
-            let default = std::path::PathBuf::from("../doom-core/assets/doom_e1m1.wad");
-            println!("cargo:rerun-if-changed={}", default.display());
-            default
-        }
-    };
-    println!("cargo:rerun-if-env-changed=DOOM_WAD");
-    wadtool::compress_wad(&wad, &out_dir.join("doom.wad"));
+    }
 
-    let wad_path = out_dir.join("doom.wad");
-    let literal = wad_path.display().to_string();
+    let literal = embedded.display().to_string();
     std::fs::write(
         out_dir.join("wad.rs"),
         format!("pub static DOOM_WAD: &[u8] = include_bytes!({literal:?});\n"),

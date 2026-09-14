@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0"
 description = "Tiny Doom-like raycaster for the hackxpansion console (fits 512 KiB RAM)"
+repository = "https://github.com/KOEGlike/hackxpansion-doom"
 
 [dependencies]
 lz4_flex = { version = "0.11", default-features = false }
@@ -14,6 +15,6 @@ libm = "0.2"
 defmt = "1.1"
 
 [build-dependencies]
-wadtool = { path = "../wadtool" }
+wadtool = { version = "0.1.0", path = "../wadtool" }
 
 [dev-dependencies]

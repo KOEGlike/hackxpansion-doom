@@ -16,9 +16,12 @@ edition = "2024"
 name = "doom-app"
 version = "0.1.0"
 license = "GPL-3.0"
-publish = false
 description = "DOOM port app for the hackxpansion console"
+repository = "https://github.com/KOEGlike/hackxpansion-doom"
+# doom-app is the workspace root: keep sibling crates and the legacy
+# Chocolate-Doom reference out of the published .crate file.
+exclude = ["tiny/", "wadtool/", "doom-core/", "doom-sys/", "Cargo.lock"]
 
 [dependencies]
 xpanse-api = "0.2"
-tinydoom = { path = "./tiny" }
+tinydoom = { version = "0.1.0", path = "./tiny" }
