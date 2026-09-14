@@ -1,3 +1,16 @@
+[workspace]
+members = ["tiny", "wadtool", "doom-core", "doom-sys"]
+default-members = [".", "tiny", "wadtool", "doom-core", "doom-sys"]
+resolver = "2"
+
+[profile.release]
+lto = false
+codegen-units = 1
+
+[profile.test]
+lto = false
+codegen-units = 1
+
 [package]
 edition = "2024"
 name = "doom-app"

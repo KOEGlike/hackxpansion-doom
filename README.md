@@ -25,10 +25,10 @@ purpose-built raycaster that reuses the Doom WAD art:
 ## Working on it
 
 ```sh
-cd wadtool && cargo test          # WAD pipeline unit tests
-cd ../tiny && cargo test          # engine unit tests + static RAM sizing
-cd ../tiny && cargo run --example shot   # E1M1 screenshots -> /tmp/doom_shot_*.ppm
-cd ../doom-core && cargo test --test perf  # Chocolate reference (host only)
+cargo test -p wadtool          # WAD pipeline unit tests
+cargo test -p tinydoom         # engine unit tests + static RAM sizing
+cargo run -p tinydoom --example shot   # E1M1 screenshots -> /tmp/doom_shot_*.ppm
+cargo test -p doom-core --test perf  # Chocolate reference (host only)
 # device firmware (from the hackxpansion repo):
 cargo build --release -p xpanse --target thumbv8m.main-none-eabihf
 ```
